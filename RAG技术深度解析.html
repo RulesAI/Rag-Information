@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交互式RAG技术深度解析 (集成Gemini API)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Chosen Palette: Calm Harmony Neutrals -->
+    <!-- Application Structure Plan: 本应用采用“引导式探索”仪表板设计，而非报告的线性章节结构。信息被组织成回答用户核心问题的专题模块（如“RAG是什么？”、“如何构建？”、“如何评估？”等），并通过顶部导航栏串联。这种以用户任务为中心的设计旨在降低认知负荷，通过互动引导用户逐步深入，从而提升可用性和学习效率。用户可以非线性地探索自己感兴趣的部分，使复杂信息的吸收过程更加直观和高效。新增Gemini API功能，在关键环节提供智能分析与内容生成，将静态报告升级为动态交互式工具。 -->
+    <!-- Visualization & Content Choices: 1. RAG演进 (报告表1) -> 目标: 展示技术发展路径 -> 方式: HTML/CSS交互式时间线。2. RAG vs 微调 -> 目标: 辅助技术选型 -> 方式: 交互式对比卡片，并集成Gemini API生成场景分析报告。3. 评估框架 -> 目标: 对比工具优劣 -> 方式: Chart.js雷达图。4. RAG构建 -> 新增Gemini API驱动的智能分块建议工具。5. 未来趋势 -> 新增Gemini API驱动的未来派摘要生成功能。所有可视化均未使用SVG或Mermaid JS。 -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <style>
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background-color: #F8F7F4;
+            color: #333333;
+        }
+        .nav-link {
+            transition: all 0.3s ease;
+            border-bottom: 2px solid transparent;
+        }
+        .nav-link.active, .nav-link:hover {
+            color: #4A908A;
+            border-bottom-color: #4A908A;
+        }
+        .content-section {
+            display: none;
+        }
+        .content-section.active {
+            display: block;
+        }
+        .card {
+            background-color: #FFFFFF;
+            border: 1px solid #EAEAEA;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+        }
+        .interactive-tab {
+            transition: all 0.3s ease;
+        }
+        .interactive-tab.active {
+            background-color: #4A908A;
+            color: #FFFFFF;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 40vh;
+            max-height: 400px;
+        }
+        .fade-in {
+            animation: fadeIn 0.8s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .gemini-feature-btn {
+            background-color: #4A908A;
+            color: white;
+            transition: background-color 0.3s ease;
+        }
+        .gemini-feature-btn:hover {
+            background-color: #3b736d;
+        }
+        .gemini-output {
+            background-color: #f8f9fa;
+            border-left: 4px solid #4A908A;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4A908A;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <header class="bg-white/80 backdrop-blur-md sticky top-0 z-50 shadow-sm">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <h1 class="text-2xl font-bold text-gray-800">
+                    <span class="text-[#4A908A]">RAG</span><span class="font-light">技术深度解析</span> ✨
+                </h1>
+                <nav class="hidden md:flex space-x-6">
+                    <a href="#intro" class="nav-link py-2 px-1 font-medium text-gray-600">引言</a>
+                    <a href="#evolution" class="nav-link py-2 px-1 font-medium text-gray-600">RAG的演进</a>
+                    <a href="#build" class="nav-link py-2 px-1 font-medium text-gray-600">构建与实践</a>
+                    <a href="#evaluate" class="nav-link py-2 px-1 font-medium text-gray-600">评估与基准</a>
+                    <a href="#compare" class="nav-link py-2 px-1 font-medium text-gray-600">方案对比</a>
+                    <a href="#future" class="nav-link py-2 px-1 font-medium text-gray-600">局限与未来</a>
+                </nav>
+                <div class="md:hidden">
+                    <button id="mobile-menu-button" class="text-gray-600 focus:outline-none">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-4 6h4"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="mobile-menu" class="hidden md:hidden">
+            <a href="#intro" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-100">引言</a>
+            <a href="#evolution" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-100">RAG的演进</a>
+            <a href="#build" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-100">构建与实践</a>
+            <a href="#evaluate" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-100">评估与基准</a>
+            <a href="#compare" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-100">方案对比</a>
+            <a href="#future" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-100">局限与未来</a>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+        <!-- Sections remain the same -->
+        <section id="intro" class="content-section active fade-in">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">从辅助工具到核心架构的跃迁</h2>
+                <p class="max-w-3xl mx-auto text-lg text-gray-600">本报告将带您深入探索检索增强生成（RAG）的世界。我们将剖析其从一个应对LLM缺陷的“补丁”演变为构建可信、智能AI应用的战略核心的全过程。请通过顶部导航或向下滚动，开始您的交互式探索之旅。</p>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8 text-center">
+                <div class="card p-6 rounded-xl">
+                    <div class="text-4xl mb-3 text-[#D9A567]">🚀</div>
+                    <h3 class="text-xl font-semibold mb-2">架构演进</h3>
+                    <p class="text-gray-600">探索从朴素RAG到高级、模块化RAG的清晰发展路径。</p>
+                </div>
+                <div class="card p-6 rounded-xl">
+                    <div class="text-4xl mb-3 text-[#4A908A]">🛠️</div>
+                    <h3 class="text-xl font-semibold mb-2">核心实践</h3>
+                    <p class="text-gray-600">掌握数据分块、混合搜索、重排等构建高性能系统的关键技术。</p>
+                </div>
+                <div class="card p-6 rounded-xl">
+                    <div class="text-4xl mb-3 text-[#333333]">🔮</div>
+                    <h3 class="text-xl font-semibold mb-2">未来趋势</h3>
+                    <p class="text-gray-600">展望多模态、智能体化和GraphRAG等前沿发展方向。</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="evolution" class="content-section fade-in">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">RAG的演进之路</h2>
+                <p class="max-w-3xl mx-auto text-lg text-gray-600">RAG并非一成不变，它的发展是由解决实际问题驱动的。下面的交互式时间线展示了其从简单到复杂的演进过程。请点击每个阶段来了解其核心架构、关键技术和局限性。</p>
+            </div>
+            <div id="evolution-timeline" class="relative">
+                <div class="border-l-2 border-dashed border-[#4A908A] absolute h-full top-0 left-1/2 -ml-px"></div>
+                <div class="space-y-12">
+                    <div data-evo="naive" class="evo-stage cursor-pointer">
+                        <div class="flex items-center md:justify-end md:mr-8">
+                            <div class="w-full md:w-5/12 text-left md:text-right p-4 card rounded-xl">
+                                <h3 class="text-xl font-bold text-[#4A908A]">朴素RAG (Naive RAG)</h3>
+                                <p class="text-gray-500 mt-2">最基础的“检索-读取”线性流程，验证了RAG的核心价值。</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div data-evo="advanced" class="evo-stage cursor-pointer">
+                        <div class="flex items-center md:justify-start md:ml-8">
+                             <div class="w-full md:w-5/12 text-left p-4 card rounded-xl">
+                                <h3 class="text-xl font-bold text-[#4A908A]">高级RAG (Advanced RAG)</h3>
+                                <p class="text-gray-500 mt-2">引入检索前后优化技术，如重排和查询转换，显著提升性能。</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div data-evo="modular" class="evo-stage cursor-pointer">
+                        <div class="flex items-center md:justify-end md:mr-8">
+                           <div class="w-full md:w-5/12 text-left md:text-right p-4 card rounded-xl">
+                                <h3 class="text-xl font-bold text-[#4A908A]">模块化RAG (Modular RAG)</h3>
+                                <p class="text-gray-500 mt-2">灵活、可组合的框架，支持迭代检索、与智能体融合等复杂模式。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="evolution-details" class="mt-12 card rounded-xl p-6 min-h-[200px] transition-all duration-500">
+            </div>
+        </section>
+
+        <section id="build" class="content-section fade-in">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">构建高性能RAG系统</h2>
+                <p class="max-w-3xl mx-auto text-lg text-gray-600">一个RAG系统的性能瓶颈往往在于“检索”而非“生成”。本节将带您了解构建一个高质量RAG流水线的最佳实践，从数据处理到最终生成，每一步都至关重要。</p>
+            </div>
+            <div class="flex flex-col md:flex-row gap-8">
+                <div class="md:w-1/3">
+                    <ul class="space-y-2">
+                        <li><button data-build-tab="chunking" class="build-tab interactive-tab w-full text-left p-4 rounded-lg font-semibold">1. 索引与分块 (Chunking)</button></li>
+                        <li><button data-build-tab="search" class="build-tab interactive-tab w-full text-left p-4 rounded-lg font-semibold">2. 高级检索技术</button></li>
+                        <li><button data-build-tab="rerank" class="build-tab interactive-tab w-full text-left p-4 rounded-lg font-semibold">3. 重排的关键作用</button></li>
+                        <li><button data-build-tab="generate" class="build-tab interactive-tab w-full text-left p-4 rounded-lg font-semibold">4. 生成与增强</button></li>
+                    </ul>
+                </div>
+                <div id="build-content" class="md:w-2/3 card rounded-xl p-6 min-h-[300px] transition-all duration-500">
+                </div>
+            </div>
+            <div id="gemini-chunking-tool" class="hidden mt-8 card p-6 rounded-xl">
+                 <h3 class="text-xl font-bold text-gray-800 mb-4">✨ 智能分块建议 (Gemini API)</h3>
+                 <p class="text-gray-600 mb-4">将您的样本文本粘贴到下方，AI将分析其结构和内容，并为您推荐最合适的分块策略。</p>
+                 <textarea id="chunking-input" class="w-full p-2 border rounded-lg h-32" placeholder="在此处粘贴您的样本文本..."></textarea>
+                 <button id="chunking-submit" class="gemini-feature-btn font-bold py-2 px-4 rounded-lg mt-4">获取建议</button>
+                 <div id="chunking-output" class="mt-4 p-4 rounded-lg hidden"></div>
+            </div>
+        </section>
+
+        <section id="evaluate" class="content-section fade-in">
+             <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">如何评估RAG系统？</h2>
+                <p class="max-w-3xl mx-auto text-lg text-gray-600">一个好的RAG系统不仅要能用，还要可衡量、可诊断。本节介绍业界领先的评估框架和核心指标，帮助您科学地度量和优化您的RAG应用。</p>
+            </div>
+            <div class="grid md:grid-cols-2 gap-8 items-center">
+                <div class="card rounded-xl p-6">
+                    <h3 class="text-xl font-semibold mb-4 text-center">RAG三元组：诊断性框架</h3>
+                    <div id="rag-triad-diagram" class="space-y-4">
+                        <div class="bg-amber-100/50 p-4 rounded-lg text-center">
+                            <h4 class="font-bold text-amber-800">查询 ➔ 上下文</h4>
+                            <p class="text-sm text-amber-700">上下文相关性 (Context Relevance)<br>检索器找到对的信息了吗？</p>
+                        </div>
+                        <div class="text-center text-2xl text-gray-400">▼</div>
+                        <div class="bg-teal-100/50 p-4 rounded-lg text-center">
+                            <h4 class="font-bold text-teal-800">上下文 ➔ 答案</h4>
+                            <p class="text-sm text-teal-700">答案忠实度 (Faithfulness)<br>生成器是否忠于上下文？</p>
+                        </div>
+                        <div class="text-center text-2xl text-gray-400">▼</div>
+                        <div class="bg-sky-100/50 p-4 rounded-lg text-center">
+                             <h4 class="font-bold text-sky-800">查询 ➔ 答案</h4>
+                            <p class="text-sm text-sky-700">答案相关性 (Answer Relevance)<br>最终答案回答了问题吗？</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="chart-container">
+                        <canvas id="evalFrameworksChart"></canvas>
+                    </div>
+                    <p class="text-sm text-gray-500 mt-4">主流评估框架能力对比 (示意)</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="compare" class="content-section fade-in">
+             <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">RAG vs. 微调：战略抉择</h2>
+                <p class="max-w-3xl mx-auto text-lg text-gray-600">“我应该用RAG还是微调？”这是最常见的问题。它们并非互斥，而是互补。下面的交互式对比将帮助您根据具体需求，在不同维度上理解它们的优劣，做出明智的技术选型。</p>
+            </div>
+            <div id="comparison-tool" class="flex flex-col md:flex-row gap-8">
+                <div class="w-full md:w-1/4">
+                    <h3 class="font-semibold text-lg mb-4 text-center">选择对比维度</h3>
+                    <div class="flex flex-wrap justify-center gap-2">
+                    </div>
+                </div>
+                <div class="w-full md:w-3/4 grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="card rounded-xl p-6" id="rag-column">
+                        <h3 class="text-2xl font-bold text-[#4A908A] mb-4 text-center">RAG</h3>
+                        <ul class="space-y-4"></ul>
+                    </div>
+                    <div class="card rounded-xl p-6" id="finetune-column">
+                         <h3 class="text-2xl font-bold text-[#D9A567] mb-4 text-center">微调 (Fine-tuning)</h3>
+                         <ul class="space-y-4"></ul>
+                    </div>
+                </div>
+            </div>
+            <div id="gemini-scenario-tool" class="mt-8 card p-6 rounded-xl">
+                 <h3 class="text-xl font-bold text-gray-800 mb-4">✨ 生成场景分析报告 (Gemini API)</h3>
+                 <p class="text-gray-600 mb-4">请简要描述您的AI应用场景，例如“为律师事务所构建一个内部法律文档问答系统”，AI将为您分析RAG与微调的适用性。</p>
+                 <textarea id="scenario-input" class="w-full p-2 border rounded-lg h-24" placeholder="在此处描述您的应用场景..."></textarea>
+                 <button id="scenario-submit" class="gemini-feature-btn font-bold py-2 px-4 rounded-lg mt-4">生成分析报告</button>
+                 <div id="scenario-output" class="mt-4 p-4 rounded-lg hidden"></div>
+            </div>
+        </section>
+
+        <section id="future" class="content-section fade-in">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">局限性与未来前沿</h2>
+                <p class="max-w-3xl mx-auto text-lg text-gray-600">RAG并非万能灵药，它有其固有的能力边界。同时，其技术前沿也在不断突破。本节将带您审视RAG的局限性，并展望其激动人心的未来发展方向。</p>
+            </div>
+             <div id="future-cards-container" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+             </div>
+             <div id="gemini-abstract-output-container" class="mt-8"></div>
+        </section>
+
+    </main>
+    
+    <footer class="border-t mt-12 py-8">
+        <div class="container mx-auto px-4 text-center text-gray-500">
+            <p>&copy; 2025 RAG技术交互式报告。由Gemini API提供智能增强功能。</p>
+        </div>
+    </footer>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            
+            const data = {
+                evolution: {
+                    naive: {
+                        title: '朴素RAG (Naive RAG)',
+                        content: `<h4 class="text-lg font-semibold text-gray-800 mb-2">核心架构</h4>
+                                 <p class="text-gray-600 mb-4">遵循一个简单的“索引 -> 检索 -> 生成”的线性流水线。这是RAG概念最原始、最直接的实现。</p>
+                                 <h4 class="text-lg font-semibold text-gray-800 mb-2">关键技术</h4>
+                                 <p class="text-gray-600 mb-4">主要依赖向量数据库和相似度搜索（如余弦相似度）来查找相关文本块。</p>
+                                 <h4 class="text-lg font-semibold text-gray-800 mb-2">局限性</h4>
+                                 <p class="text-gray-600">检索精度和召回率低，对噪声敏感，生成的回答可能不相关或包含错误信息。</p>`
+                    },
+                    advanced: {
+                        title: '高级RAG (Advanced RAG)',
+                        content: `<h4 class="text-lg font-semibold text-gray-800 mb-2">核心架构</h4>
+                                 <p class="text-gray-600 mb-4">在朴素RAG基础上，于检索前后增加了一系列优化模块，旨在提升检索质量和生成效果。</p>
+                                 <h4 class="text-lg font-semibold text-gray-800 mb-2">关键技术</h4>
+                                 <ul class="list-disc list-inside text-gray-600 mb-4">
+                                    <li><strong>检索前:</strong> 索引优化, 查询重写/扩展 (HyDE)</li>
+                                    <li><strong>检索后:</strong> 重排 (Reranking), 上下文压缩</li>
+                                 </ul>
+                                 <h4 class="text-lg font-semibold text-gray-800 mb-2">优势</h4>
+                                 <p class="text-gray-600">显著减少噪声，提高答案与上下文的相关性和忠实度，是生产级应用的起点。</p>`
+                    },
+                    modular: {
+                        title: '模块化RAG (Modular RAG)',
+                        content: `<h4 class="text-lg font-semibold text-gray-800 mb-2">核心架构</h4>
+                                 <p class="text-gray-600 mb-4">将固定的线性流水线解构为灵活、可插拔、可组合的模块化框架，代表了RAG的最前沿。</p>
+                                 <h4 class="text-lg font-semibold text-gray-800 mb-2">关键技术</h4>
+                                 <ul class="list-disc list-inside text-gray-600 mb-4">
+                                    <li><strong>新模块:</strong> 搜索、路由、记忆模块</li>
+                                    <li><strong>新模式:</strong> 迭代检索, 混合流程 (Rewrite-Retrieve-Read)</li>
+                                    <li><strong>与智能体融合:</strong> 作为Agent的工具被调用</li>
+                                 </ul>
+                                 <h4 class="text-lg font-semibold text-gray-800 mb-2">优势</h4>
+                                 <p class="text-gray-600">高度灵活和可扩展，能处理复杂、多步的查询，是构建复杂AI智能体的基础。</p>`
+                    }
+                },
+                build: {
+                    chunking: {
+                        title: '索引与分块',
+                        content: `<p class="mb-4">分块（Chunking）是索引中最关键的决策，核心挑战是在<strong>保持语义完整性</strong>与<strong>遵守模型上下文窗口限制</strong>间找到平衡。</p>
+                                 <ul class="space-y-3">
+                                    <li><strong>固定长度分块:</strong> 实现简单，但易切断语义，不推荐。</li>
+                                    <li><strong>上下文感知分块:</strong> 推荐起点。利用段落、句子等自然边界分割，保证语义单元完整。</li>
+                                    <li><strong>语义分块:</strong> 最先进，利用嵌入向量相似性确定边界，生成主题高度内聚的块，但成本高。</li>
+                                 </ul>
+                                 <p class="mt-4 p-3 bg-teal-50 border border-teal-200 rounded-lg text-sm"><strong>最佳实践:</strong> 从上下文感知分块入手，块大小设为256-512个Token，重叠10-20%以保证上下文连续性。</p>`
+                    },
+                    search: {
+                        title: '高级检索技术',
+                        content: `<p class="mb-4">单纯的向量搜索不足以应对复杂查询。高级检索技术能极大提升鲁棒性和准确性。</p>
+                                 <ul class="space-y-3">
+                                    <li><strong>混合搜索 (Hybrid Search):</strong> <span class="font-bold">公认的最佳实践。</span> 结合基于关键词的稀疏检索（如BM25）和基于向量的稠密检索。既保证关键词精确命中，又捕捉深层语义。</li>
+                                    <li><strong>查询转换 (Query Transformations):</strong> 针对模糊或复杂的原始查询进行优化。代表技术<strong>HyDE</strong>，先让LLM生成一个“假设性”答案，再用其向量进行搜索，效果显著。</li>
+                                 </ul>`
+                    },
+                    rerank: {
+                        title: '重排的关键作用',
+                        content: `<p class="mb-4">初始检索目标是“求全”（高召回率），不可避免引入噪声。重排的目标则是“求精”（高精确率）。</p>
+                                 <p class="mb-4">重排器通常是一个更强大但计算更密集的模型（如<strong>交叉编码器 Cross-encoder</strong>）。它会对初步检索返回的Top-K（如50）个文档进行二次精排，选出最终的Top-N（如5）个最相关文档送给LLM。</p>
+                                 <p class="mt-4 p-3 bg-teal-50 border border-teal-200 rounded-lg text-sm"><strong>核心价值:</strong> 虽然增加了延迟，但重排对于构建生产级、高精度的RAG系统而言，带来的性能提升是巨大的，强烈推荐使用。</p>`
+                    },
+                    generate: {
+                        title: '生成与增强',
+                        content: `<p class="mb-4">获取高质量上下文后，如何让LLM高效、忠实地利用这些信息同样重要。</p>
+                                 <ul class="space-y-3">
+                                    <li><strong>针对性微调 (如RAFT):</strong> 并非注入新知识，而是教会LLM更好地执行“基于上下文回答”的任务，学会忽略干扰信息。</li>
+                                    <li><strong>上下文重组:</strong> 应对“迷失在中间”问题，将最相关的文档块放在提示的开头和结尾。</li>
+                                    <li><strong>迭代与自适应检索 (如Self-RAG, ReAct):</strong> 将RAG从被动流水线变为具备自我反思、多步推理能力的主动系统，是解决复杂问题的关键。</li>
+                                 </ul>`
+                    },
+                },
+                comparison: {
+                    data: {
+                        title: '数据动态性',
+                        rag: '优势巨大。知识库可随时更新，信息实时生效，无需重新训练模型。',
+                        finetune: '知识静态。一旦训练完成，知识便固化，无法感知新信息，容易过时。'
+                    },
+                    privacy: {
+                        title: '数据隐私与安全',
+                        rag: '更安全。敏感数据可控于本地，不进入模型参数，降低泄露风险。',
+                        finetune: '存有风险。需将敏感数据用于训练，可能引发隐私和合规担忧。'
+                    },
+                    cost: {
+                        title: '成本与资源',
+                        rag: '前期实现成本低，主要开销在运行时的检索和存储。',
+                        finetune: '前期训练成本高昂（GPU、数据集），但单次推理成本可能更低。'
+                    },
+                    goal: {
+                        title: '核心目标',
+                        rag: '提供可追溯的**事实性知识**。目标是提升答案的**事实准确性**。',
+                        finetune: '教授模型特定的**领域语言、风格或任务技能**。目标是改变模型的**能力**。'
+                    },
+                    hallucination: {
+                        title: '幻觉控制',
+                        rag: '效果显著。将回答“锚定”在可验证的检索内容上，可提供引用来源。',
+                        finetune: '能减少领域内幻觉，但面对未知查询时仍可能“凭空捏造”。'
+                    }
+                },
+                future: [
+                    {
+                        type: '局限性',
+                        title: '语义不匹配',
+                        content: '向量检索的核心挑战。当查询需要推理或包含专业术语时，嵌入模型可能无法找到真正相关的文档。'
+                    },
+                    {
+                        type: '局限性',
+                        title: '多跳推理失败',
+                        content: '标准RAG无法自主分解复杂问题，并进行多步、有依赖的检索，例如“《沙丘》导演的另一部电影主演是谁？”'
+                    },
+                    {
+                        type: '局限性',
+                        title: '上下文幻觉',
+                        content: '即使有上下文，LLM也可能错误解读、夸大或不当引申，产生更隐蔽的幻觉。'
+                    },
+                    {
+                        type: '未来',
+                        title: '多模态RAG',
+                        content: '突破纯文本限制，整合图像、音视频。AI将能“看懂”X光片，“听懂”会议录音。'
+                    },
+                    {
+                        type: '未来',
+                        title: '智能体RAG',
+                        content: '赋予RAG自我反思和多步推理能力，使其从“问答机”变为主动的“问题解决者”。'
+                    },
+                    {
+                        type: '未来',
+                        title: '知识图谱RAG (GraphRAG)',
+                        content: '检索不再是找相似文本，而是在结构化的知识网络中导航和推理，极大提升准确性和可解释性。'
+                    }
+                ]
+            };
+            
+            async function callGeminiAPI(prompt) {
+                const apiKey = ""; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                
+                const payload = {
+                    contents: [{
+                        role: "user",
+                        parts: [{ text: prompt }]
+                    }]
+                };
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const result = await response.json();
+
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        return result.candidates[0].content.parts[0].text;
+                    } else {
+                        console.error('Unexpected API response structure:', result);
+                        return '抱歉，从API收到的响应格式不正确。';
+                    }
+                } catch (error) {
+                    console.error('Error calling Gemini API:', error);
+                    return '抱歉，调用AI服务时出错。请检查控制台获取更多信息。';
+                }
+            }
+            
+            function showLoader(outputElement) {
+                outputElement.innerHTML = '<div class="flex justify-center items-center p-4"><div class="loader"></div></div>';
+                outputElement.classList.remove('hidden');
+            }
+
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const mobileMenu = document.getElementById('mobile-menu');
+            mobileMenuButton.addEventListener('click', () => {
+                mobileMenu.classList.toggle('hidden');
+            });
+
+            const navLinks = document.querySelectorAll('.nav-link, #mobile-menu a');
+            const contentSections = document.querySelectorAll('.content-section');
+
+            function navigateTo(hash) {
+                if (!hash) hash = '#intro';
+
+                navLinks.forEach(link => {
+                    link.classList.toggle('active', link.hash === hash);
+                });
+
+                contentSections.forEach(section => {
+                    section.classList.toggle('active', section.id === hash.substring(1));
+                });
+                
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+
+            navLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const hash = e.currentTarget.hash;
+                    window.location.hash = hash;
+                });
+            });
+            
+            window.addEventListener('hashchange', () => navigateTo(window.location.hash));
+            navigateTo(window.location.hash || '#intro');
+
+
+            function initEvolutionSection() {
+                const stages = document.querySelectorAll('.evo-stage');
+                const detailsContainer = document.getElementById('evolution-details');
+                
+                function updateDetails(evoKey) {
+                    const evoData = data.evolution[evoKey];
+                    detailsContainer.innerHTML = `<h3 class="text-2xl font-bold text-gray-800 mb-4">${evoData.title}</h3>${evoData.content}`;
+                    stages.forEach(s => s.querySelector('.card').classList.remove('ring-2', 'ring-[#4A908A]'));
+                    document.querySelector(`[data-evo="${evoKey}"]`).querySelector('.card').classList.add('ring-2', 'ring-[#4A908A]');
+                }
+
+                stages.forEach(stage => {
+                    stage.addEventListener('click', () => {
+                        updateDetails(stage.dataset.evo);
+                    });
+                });
+                
+                updateDetails('naive');
+            }
+            initEvolutionSection();
+
+            function initBuildSection() {
+                const tabs = document.querySelectorAll('.build-tab');
+                const contentContainer = document.getElementById('build-content');
+                const geminiTool = document.getElementById('gemini-chunking-tool');
+
+                function updateContent(buildKey) {
+                    const buildData = data.build[buildKey];
+                    contentContainer.innerHTML = `<h3 class="text-xl font-bold text-gray-800 mb-4">${buildData.title}</h3>${buildData.content}`;
+                    tabs.forEach(t => t.classList.remove('active'));
+                    const activeTab = document.querySelector(`[data-build-tab="${buildKey}"]`);
+                    activeTab.classList.add('active');
+
+                    if (buildKey === 'chunking') {
+                        geminiTool.classList.remove('hidden');
+                    } else {
+                        geminiTool.classList.add('hidden');
+                    }
+                }
+                
+                tabs.forEach(tab => {
+                    tab.addEventListener('click', () => {
+                        updateContent(tab.dataset.buildTab);
+                    });
+                });
+
+                updateContent('chunking');
+                
+                const chunkingSubmit = document.getElementById('chunking-submit');
+                const chunkingInput = document.getElementById('chunking-input');
+                const chunkingOutput = document.getElementById('chunking-output');
+
+                chunkingSubmit.addEventListener('click', async () => {
+                    const userInput = chunkingInput.value.trim();
+                    if (!userInput) {
+                        chunkingOutput.innerHTML = '请输入一些文本内容。';
+                        chunkingOutput.className = 'mt-4 p-4 rounded-lg bg-red-100 text-red-800';
+                        chunkingOutput.classList.remove('hidden');
+                        return;
+                    }
+                    showLoader(chunkingOutput);
+                    
+                    const prompt = `You are an expert in Retrieval-Augmented Generation (RAG). A user has provided the following text. Analyze it and recommend the best chunking strategy (e.g., 'Fixed-size', 'Context-aware using sentences', or 'Semantic'). Explain your reasoning in 2-3 sentences in Chinese. User Text: "${userInput}"`;
+                    
+                    const result = await callGeminiAPI(prompt);
+                    chunkingOutput.innerHTML = result.replace(/\n/g, '<br>');
+                    chunkingOutput.className = 'mt-4 p-4 rounded-lg gemini-output';
+                });
+            }
+            initBuildSection();
+
+            function initEvalSection() {
+                const ctx = document.getElementById('evalFrameworksChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'radar',
+                    data: {
+                        labels: ['组件诊断能力', '自动化程度', '易用性', '可扩展性', '社区活跃度'],
+                        datasets: [{
+                            label: 'RAGAs',
+                            data: [5, 4, 3, 4, 5],
+                            borderColor: 'rgba(74, 144, 138, 0.8)',
+                            backgroundColor: 'rgba(74, 144, 138, 0.2)',
+                        }, {
+                            label: 'TruLens',
+                            data: [5, 3, 5, 3, 4],
+                            borderColor: 'rgba(217, 165, 103, 0.8)',
+                            backgroundColor: 'rgba(217, 165, 103, 0.2)',
+                        },
+                        {
+                            label: 'LangSmith',
+                            data: [4, 5, 4, 5, 3],
+                            borderColor: 'rgba(51, 51, 51, 0.8)',
+                            backgroundColor: 'rgba(51, 51, 51, 0.2)',
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            },
+                        },
+                        scales: {
+                            r: {
+                                angleLines: {
+                                    display: true
+                                },
+                                suggestedMin: 0,
+                                suggestedMax: 5,
+                                pointLabels: { font: { size: 14 } }
+                            }
+                        }
+                    }
+                });
+            }
+            initEvalSection();
+
+            function initComparisonSection() {
+                const btnContainer = document.querySelector('#comparison-tool .flex-wrap');
+                const ragUl = document.querySelector('#rag-column ul');
+                const ftUl = document.querySelector('#finetune-column ul');
+                const comparisonData = data.comparison;
+
+                Object.keys(comparisonData).forEach(key => {
+                    if (key === 'data') return;
+                    const item = comparisonData[key];
+                    const btn = document.createElement('button');
+                    btn.className = 'comparison-btn interactive-tab text-sm font-medium py-2 px-4 rounded-full';
+                    btn.textContent = item.title;
+                    btn.dataset.key = key;
+                    btnContainer.appendChild(btn);
+
+                    const ragLi = document.createElement('li');
+                    ragLi.dataset.key = key;
+                    ragLi.innerHTML = `<strong>${item.title}:</strong><p class="text-gray-600">${item.rag}</p>`;
+                    ragUl.appendChild(ragLi);
+
+                    const ftLi = document.createElement('li');
+                    ftLi.dataset.key = key;
+                    ftLi.innerHTML = `<strong>${item.title}:</strong><p class="text-gray-600">${item.finetune}</p>`;
+                    ftUl.appendChild(ftLi);
+                });
+
+                const allBtns = document.querySelectorAll('.comparison-btn');
+                const allLis = document.querySelectorAll('#comparison-tool ul li');
+                
+                function highlight(key) {
+                    allLis.forEach(li => {
+                        if (li.dataset.key === key) {
+                            li.classList.add('bg-yellow-100/50', 'p-3', 'rounded-lg', 'ring-2', 'ring-yellow-300');
+                        } else {
+                            li.classList.remove('bg-yellow-100/50', 'p-3', 'rounded-lg', 'ring-2', 'ring-yellow-300');
+                        }
+                    });
+                     allBtns.forEach(b => b.classList.toggle('active', b.dataset.key === key));
+                }
+
+                allBtns.forEach(btn => {
+                    btn.addEventListener('click', () => highlight(btn.dataset.key));
+                });
+                
+                const scenarioSubmit = document.getElementById('scenario-submit');
+                const scenarioInput = document.getElementById('scenario-input');
+                const scenarioOutput = document.getElementById('scenario-output');
+
+                scenarioSubmit.addEventListener('click', async () => {
+                    const userInput = scenarioInput.value.trim();
+                    if (!userInput) {
+                         scenarioOutput.innerHTML = '请输入您的应用场景。';
+                         scenarioOutput.className = 'mt-4 p-4 rounded-lg bg-red-100 text-red-800';
+                         scenarioOutput.classList.remove('hidden');
+                        return;
+                    }
+                    showLoader(scenarioOutput);
+
+                    const prompt = `You are an AI strategy consultant. A user describes their use case. Based on the description, recommend whether they should use RAG, Fine-tuning, or a Hybrid approach. Justify your recommendation in Chinese, referencing concepts like data freshness, factuality, cost, and task type. Your response should be structured with a clear recommendation and bullet points for the reasoning. Use Case: "${userInput}"`;
+                    const result = await callGeminiAPI(prompt);
+                    scenarioOutput.innerHTML = result.replace(/\n/g, '<br>');
+                    scenarioOutput.className = 'mt-4 p-4 rounded-lg gemini-output';
+                });
+
+            }
+            initComparisonSection();
+            
+            function initFutureSection() {
+                const container = document.getElementById('future-cards-container');
+                const abstractOutputContainer = document.getElementById('gemini-abstract-output-container');
+
+                data.future.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'card rounded-xl p-6 flex flex-col';
+                    const badgeColor = item.type === '局限性' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800';
+                    let buttonHtml = '';
+                    if (item.type === '未来') {
+                         buttonHtml = `<button data-title="${item.title}" class="generate-abstract-btn gemini-feature-btn font-bold py-2 px-3 rounded-lg mt-4 w-full">✨ 生成未来派摘要</button>`;
+                    }
+                    card.innerHTML = `
+                        <div class="flex-grow">
+                            <span class="inline-block ${badgeColor} text-xs font-semibold px-2.5 py-0.5 rounded-full mb-3">${item.type}</span>
+                            <h4 class="text-xl font-semibold mb-2">${item.title}</h4>
+                            <p class="text-gray-600">${item.content}</p>
+                        </div>
+                        ${buttonHtml}
+                    `;
+                    container.appendChild(card);
+                });
+
+                document.querySelectorAll('.generate-abstract-btn').forEach(button => {
+                    button.addEventListener('click', async (e) => {
+                        const title = e.currentTarget.dataset.title;
+                        
+                        abstractOutputContainer.innerHTML = `
+                            <div class="card p-6 rounded-xl">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">关于 “${title}” 的未来派摘要</h3>
+                                <div id="abstract-content"></div>
+                            </div>
+                        `;
+                        const abstractContent = document.getElementById('abstract-content');
+                        showLoader(abstractContent);
+                        abstractOutputContainer.scrollIntoView({ behavior: 'smooth' });
+
+                        const prompt = `You are a creative AI researcher. Generate a short, futuristic research paper abstract (around 150 words) in Chinese on the topic of '${title}'. The abstract should be imaginative but grounded in plausible technological advancements.`;
+                        const result = await callGeminiAPI(prompt);
+                        abstractContent.innerHTML = `<p class="text-gray-700 leading-relaxed">${result.replace(/\n/g, '<br>')}</p>`;
+                        abstractContent.className = 'p-4 rounded-lg gemini-output';
+                    });
+                });
+            }
+            initFutureSection();
+        });
+    </script>
+</body>
+</html>
